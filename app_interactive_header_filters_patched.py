@@ -21,31 +21,37 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import mm
+
 class NumberedCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._saved_page_states = []
 
     def showPage(self):
+        # เก็บสภาพของหน้าปัจจุบันไว้ก่อนเปลี่ยนหน้า
         self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()   # ← ใช้ _startPage() ไม่ใช่ showPage() ของ parent
+        self._startPage()  # ใช้ _startPage เพื่อไม่ให้เลขหน้าถูกวาดซ้ำ
 
     def save(self):
-        """วนเขียนเลขหน้าทุกหน้า โดยไม่ duplicate"""
+        # วาดเลขหน้าท้ายสุดทุกหน้า แล้วค่อยบันทึก
         num_pages = len(self._saved_page_states)
         for state in self._saved_page_states:
             self.__dict__.update(state)
-            self.draw_page_number(num_pages)
-            super().showPage()   # ← ตอนนี้ showPage แค่รอบสุดท้ายจริง ๆ
+            self._draw_page_number(num_pages)
+            super().showPage()
         super().save()
 
-    def draw_page_number(self, page_count):
-    page = self._pageNumber
-    try:
-        self.setFont("THSarabunNew", 12)
-    except:
-        self.setFont("Helvetica", 10)
-    self.drawRightString(200*mm, 10*mm, f"{page}/{page_count}")
+    def _draw_page_number(self, page_count):
+        page = self._pageNumber
+        # ฟอนต์ไทยมี/ไม่มี ก็ไม่ให้ล้ม
+        try:
+            self.setFont("THSarabunNew", 12)
+        except Exception:
+            self.setFont("Helvetica", 10)
+        self.drawRightString(200*mm, 10*mm, f"{page}/{page_count}")
+
 
 # -------------------- App --------------------
 app = Flask(__name__)
@@ -1690,6 +1696,13 @@ def export_csv():
 # =========================
 # Export PDF
 # =========================
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+
 @app.route("/export/pdf")
 @login_required
 def export_pdf():
@@ -1700,91 +1713,83 @@ def export_pdf():
 
     recs, _ = get_records(search, start_date, end_date, damage_only, 1, 99999)
 
-    fp = os.path.join(BASE_DIR,"records.pdf")
+    fp = os.path.join(BASE_DIR, "records.pdf")
 
-     # ฟอนต์ไทย
     # ----- ฟอนต์ไทย ปลอดภัย + fallback -----
-font_path = os.path.join("static", "fonts", "THSarabunNew.ttf")
-BASE_FONT = "Helvetica"
-try:
-    if os.path.exists(font_path):
-        pdfmetrics.registerFont(TTFont("THSarabunNew", font_path))
-        BASE_FONT = "THSarabunNew"
-except Exception:
-    BASE_FONT = "Helvetica"   # กันพัง
+    font_path = os.path.join("static", "fonts", "THSarabunNew.ttf")
+    BASE_FONT = "Helvetica"
+    try:
+        if os.path.exists(font_path):
+            pdfmetrics.registerFont(TTFont("THSarabunNew", font_path))
+            BASE_FONT = "THSarabunNew"
+    except Exception:
+        BASE_FONT = "Helvetica"   # กันพังไว้ก่อน
 
-styles = getSampleStyleSheet()
-styles.add(ParagraphStyle(name='ThaiNormal', fontName=BASE_FONT, fontSize=12, leading=14))
-styles.add(ParagraphStyle(name='ThaiHeader', fontName=BASE_FONT, fontSize=16, alignment=1, spaceAfter=10))
+    # ----- Styles -----
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="ThaiNormal", fontName=BASE_FONT, fontSize=12, leading=14))
+    styles.add(ParagraphStyle(name="ThaiHeader", fontName=BASE_FONT, fontSize=16, alignment=1, spaceAfter=10))
 
-# ----- โลโก้ ปลอดภัย -----
-from reportlab.platypus import Image
-logo_path = os.path.join("static", "logo.png")
-if os.path.exists(logo_path):
-    elements.append(Image(logo_path, width=250, height=60))
-# ถ้าไม่มี ก็ข้ามได้ ไม่ต้องให้ล้ม
+    # ----- เตรียมเอกสาร -----
+    doc = SimpleDocTemplate(
+        fp, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=40, bottomMargin=30
+    )
     elements = []
 
-    # ✅ ดึงชื่อ user ที่ login อยู่
-    user = session.get("username", "Unknown")
-
-    # โลโก้บริษัท
-    from reportlab.platypus import Image
-    logo_path = os.path.join("static","logo.png")
+    # ----- Header + โลโก้ (ไม่บังคับให้มีไฟล์) -----
+    logo_path = os.path.join("static", "logo.png")
     if os.path.exists(logo_path):
         elements.append(Image(logo_path, width=250, height=60))
-    elements.append(Paragraph("<b>แบบตรวจยานพาหนะก่อนใช้งาน</b>", styles['ThaiHeader']))
-    elements.append(Paragraph("Vehicle Pre-Use Check", styles['ThaiHeader']))
-    elements.append(Paragraph("โลตัสฮอลวิศวกรรมเหมืองแร่และก่อสร้าง จำกัด", styles['ThaiNormal']))
-    elements.append(Paragraph("LotusHall Mining : Heavy Engineering Construction Co., Ltd.", styles['ThaiNormal']))
-    elements.append(Paragraph(
-    "วันที่พิมพ์รายงาน : " + datetime.now().strftime("%d/%m/%Y") + f" (ผู้ใช้: {user})",
-    styles['ThaiNormal']
-))
 
+    user = session.get("username", "Unknown")
+    elements.append(Paragraph("<b>แบบตรวจยานพาหนะก่อนใช้งาน</b>", styles["ThaiHeader"]))
+    elements.append(Paragraph("Vehicle Pre-Use Check", styles["ThaiHeader"]))
+    elements.append(Paragraph("โลตัสฮอลวิศวกรรมเหมืองแร่และก่อสร้าง จำกัด", styles["ThaiNormal"]))
+    elements.append(Paragraph("LotusHall Mining : Heavy Engineering Construction Co., Ltd.", styles["ThaiNormal"]))
+    elements.append(Paragraph(
+        "วันที่พิมพ์รายงาน : " + datetime.now().strftime("%d/%m/%Y") + f" (ผู้ใช้: {user})",
+        styles["ThaiNormal"]
+    ))
     elements.append(Spacer(1, 12))
 
-    # ✅ ตารางข้อมูล (ตัดคอลัมน์ "ไฟล์แนบ" ออก)
-    headers = ["หมายเลขรถ","ผู้ตรวจสอบ","วันที่","ความคิดเห็น",
-               "รายการความเสียหาย","ผู้บันทึก","เวลาบันทึก"]
-    data = [[Paragraph(h, styles['ThaiNormal']) for h in headers]]
-
+    # ----- ตารางข้อมูล -----
+    headers = ["หมายเลขรถ","ผู้ตรวจสอบ","วันที่","ความคิดเห็น","รายการความเสียหาย","ผู้บันทึก","เวลาบันทึก"]
+    data = [[Paragraph(h, styles["ThaiNormal"]) for h in headers]]
     for r in recs:
-        row = [
-            Paragraph(str(r[1] or "-"), styles['ThaiNormal']),  # หมายเลขรถ
-            Paragraph(str(r[2] or "-"), styles['ThaiNormal']),  # ผู้ตรวจสอบ
-            Paragraph(str(r[3] or "-"), styles['ThaiNormal']),  # วันที่
-            Paragraph(str(r[5] or "-"), styles['ThaiNormal']),  # ความคิดเห็น
-            Paragraph(str(r[6] or "-"), styles['ThaiNormal']),  # ความเสียหาย
-            Paragraph(str(r[7] or "-"), styles['ThaiNormal']),  # ผู้บันทึก
-            Paragraph(str(r[8] or "-"), styles['ThaiNormal']),  # เวลาบันทึก
-        ]
-        data.append(row)
+        data.append([
+            Paragraph(str(r[1] or "-"), styles["ThaiNormal"]),
+            Paragraph(str(r[2] or "-"), styles["ThaiNormal"]),
+            Paragraph(str(r[3] or "-"), styles["ThaiNormal"]),
+            Paragraph(str(r[5] or "-"), styles["ThaiNormal"]),
+            Paragraph(str(r[6] or "-"), styles["ThaiNormal"]),
+            Paragraph(str(r[7] or "-"), styles["ThaiNormal"]),
+            Paragraph(str(r[8] or "-"), styles["ThaiNormal"]),
+        ])
 
-    # ปรับความกว้างคอลัมน์ใหม่ (7 ช่อง)
     col_widths = [70,70,60,100,100,80,80]
     table = Table(data, repeatRows=1, colWidths=col_widths)
     table.setStyle(TableStyle([
-        ('BACKGROUND',(0,0),(-1,0), colors.HexColor("#0d47a1")),
-        ('TEXTCOLOR',(0,0),(-1,0), colors.white),
-        ('FONTNAME',(0,0),(-1,-1),'THSarabunNew'),
-        ('FONTSIZE',(0,0),(-1,-1),12),
-        ('GRID',(0,0),(-1,-1),0.25, colors.grey),
-        ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
-        ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.whitesmoke, colors.lightgrey])
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0d47a1")),
+        ('TEXTCOLOR',  (0,0), (-1,0), colors.white),
+        ('FONTNAME',   (0,0), (-1,-1), BASE_FONT),
+        ('FONTSIZE',   (0,0), (-1,-1), 12),
+        ('GRID',       (0,0), (-1,-1), 0.25, colors.grey),
+        ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.whitesmoke, colors.lightgrey]),
     ]))
     elements.append(table)
     elements.append(Spacer(1, 30))
 
-    # ช่องเซ็นชื่อ
-    elements.append(Paragraph("ผู้ตรวจสอบ .................................................", styles['ThaiNormal']))
+    # ----- ช่องเซ็นชื่อ -----
+    elements.append(Paragraph("ผู้ตรวจสอบ .................................................", styles["ThaiNormal"]))
     elements.append(Spacer(1, 20))
-    elements.append(Paragraph("วันที่ ............................................................", styles['ThaiNormal']))
+    elements.append(Paragraph("วันที่ ............................................................", styles["ThaiNormal"]))
 
+    # ----- สร้างไฟล์พร้อมเลขหน้า -----
     doc.build(elements, canvasmaker=NumberedCanvas)
 
-    
     return send_file(fp, as_attachment=True)
+
 
     #RESTORE DATABASE
 
