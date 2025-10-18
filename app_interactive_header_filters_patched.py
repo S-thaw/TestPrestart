@@ -110,6 +110,8 @@ def init_db():
                       ("admin", generate_password_hash("Admin@123"), "admin"))
             conn.commit()
 
+with app.app_context():
+    init_db()
 # -------------------- CSS --------------------
 THEME_CSS = """
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
