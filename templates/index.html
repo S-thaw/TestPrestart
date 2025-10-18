@@ -1,0 +1,26 @@
+<div class="row mb-3 justify-content-center">
+  <div class="col-md-4">
+  <div class="card dashboard-card">
+    <h6>จำนวนตรวจวันนี้</h6>
+    <h3>{{ total_today }}</h3>
+    <small class="text-muted">วันที่ {{ today_text }}</small>
+  </div>
+</div>
+
+  <div class="col-md-4">
+    <div class="card dashboard-card">
+      <h6>% รถที่พบปัญหา</h6>
+      <h3>{{ percent_damage }}%</h3>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card dashboard-card">
+      <h6>Top 5 ปัญหาที่พบบ่อย</h6>
+      <ul class="list-unstyled mb-0">
+        {% for issue,count in top_issues %}
+        <li>{{ issue }} ({{ count }})</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>

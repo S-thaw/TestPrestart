@@ -1,0 +1,562 @@
+<style>
+#advFilters .card {
+  max-width: 420px;      /* จำกัดความกว้าง */
+  margin-left: auto;     /* ชิดขวา */
+  margin-right: 0;
+  border-radius: 10px;
+}
+
+#advFilters .card-body {
+  padding: 8px 12px;     /* ลด padding */
+  font-size: 14px;       /* ตัวหนังสือเล็กลง */
+}
+#advFilters input,
+#advFilters select {
+  font-size: 13px;
+  height: 28px;
+  padding: 2px 6px;
+}
+
+
+
+/* ===========================
+   Navbar Custom
+   =========================== */
+.navbar-custom {
+  position: relative;
+  z-index: 2000;
+  overflow: visible !important;
+}
+
+.navbar-custom .nav-link {
+  color: #007aff !important;
+  font-weight: 500;
+  padding: 0.3rem 0.6rem;
+}
+
+/* Admin dropdown button hover */
+.navbar-custom .dropdown.show > .nav-link.dropdown-toggle,
+.navbar-custom .dropdown > .nav-link.dropdown-toggle:hover,
+.navbar-custom .dropdown > .nav-link.dropdown-toggle:focus {
+  color: #fff !important;
+  background-color: #007aff !important;
+  border-radius: 8px;
+}
+
+/* Dropdown arrow */
+.navbar-custom .dropdown > .nav-link.dropdown-toggle::after {
+  border-top-color: #fff !important;
+}
+
+/* Dropdown menu */
+.navbar-custom .dropdown-menu {
+  position: absolute !important;
+  z-index: 5000 !important;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* ===========================
+   Card
+   =========================== */
+.card,
+.card-body {
+  overflow: visible !important;
+}
+
+/* ===========================
+   Chart
+   =========================== */
+#damageChart {
+  max-height: 280px;
+  width: 100% !important;
+}
+
+.chart-container {
+  position: relative;
+  height: 300px;
+}
+
+/* ===========================
+   Form label & Damage textarea
+   =========================== */
+.input-group.form-floating > label {
+  left: 2.5rem;
+  width: calc(100% - 2.5rem);
+  text-align: center;
+  color: #6c757d;
+  font-weight: 400;
+}
+
+#damage {
+  min-height: 44px;
+  resize: none;
+  overflow: hidden;
+}
+
+/* แถวเครื่องมือค้นหา: กันห่อบรรทัด และอนุญาตให้เลื่อนไปด้านข้าง */
+#searchBar {            /* ถ้าไม่มี id นี้ เดี๋ยว step 4 จะใส่ให้ */
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: .5rem;
+  overflow-x: auto;     /* ถ้าแนวนอนล้น ให้เลื่อน ไม่ดันลง */
+}
+
+/* Advanced fields: กินที่คงที่ แต่ซ่อนด้วย opacity/visibility */
+#advancedFields {
+  height: 32px;               /* สูงคงที่ ใกล้เคียง input-sm */
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;       /* คลิกไม่ได้ตอนปิด */
+  transition: opacity .2s ease;
+}
+#advancedFields.show {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* ปุ่ม Toggle ให้สูงคงที่ */
+#toggleBtn {
+  padding: 0.15rem 0.45rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.card h3 {
+  font-weight: bold;
+  color: #0d6efd;
+}
+
+.dashboard-card {
+  padding: 0.75rem 1rem;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.dashboard-card h6 {
+  font-size: 0.9rem;
+  color: #6c757d;
+  margin-bottom: 0.25rem;
+}
+
+.dashboard-card h3 {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #0d6efd;
+  margin: 0;
+}
+
+.dashboard-card small {
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
+.clickable {
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.clickable:hover {
+  transform: scale(1.03);
+  background-color: #f8f9fa;
+}
+.issue-link {
+  text-decoration: none;
+  color: #0d6efd;
+  cursor: pointer;
+}
+.issue-link:hover {
+  text-decoration: underline;
+}
+
+/* ===========================
+   Dark Mode
+   =========================== */
+body.dark-mode {
+  background-color: #121212 !important;
+  color: #e0e0e0 !important;
+}
+
+
+/* Card / Table */
+body.dark-mode .card {
+  background-color: #1e1e1e !important;
+  color: #e0e0e0 !important;
+  box-shadow: 0 2px 6px rgba(255,255,255,0.05) !important;
+}
+body.dark-mode .table {
+  background-color: #1e1e1e !important;
+  color: #ddd !important;
+}
+body.dark-mode .table thead {
+  background: #333 !important;
+  color: #fff !important;
+}
+
+/* Form */
+body.dark-mode .form-control,
+body.dark-mode .form-select {
+  background-color: #2a2a2a !important;
+  color: #eee !important;
+  border: 1px solid #444 !important;
+}
+
+/* Dashboard Cards */
+body.dark-mode .dashboard-card {
+  background-color: #2a2a2a !important;
+  color: #f1f1f1 !important;
+}
+body.dark-mode .dashboard-card h3 {
+  color: #90caf9 !important;
+}
+
+/* Link */
+body.dark-mode a,
+body.dark-mode .issue-link {
+  color: #82b1ff !important;
+}
+body.dark-mode .issue-link:hover {
+  text-decoration: underline;
+}
+
+.input-group-text {
+  background-color: #f8f9fa;
+  font-size: 0.9rem;
+  padding: 0.25rem 0.5rem;
+}
+#advancedFields {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  height: 32px;               /* คงความสูงไว้ */
+  transition: opacity 0.2s ease;
+}
+
+#advancedFields.show {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+/* ปุ่มค้นหา + ปุ่มล้างค่าในช่อง search */
+.input-group .btn {
+  border-radius: 0;          /* ต่อเนื่องกับ input */
+  font-size: 0.85rem;        /* ขนาดเล็กลงให้พอดีกับช่อง */
+  padding: 0.25rem 0.6rem;
+  height: 100%;
+}
+
+.input-group .btn:first-of-type {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.input-group .btn:last-of-type {
+  border-top-right-radius: .25rem;   /* ปุ่มขวาสุดโค้งเล็กน้อย */
+  border-bottom-right-radius: .25rem;
+}
+.dashboard-card {
+  padding: 0.5rem 1rem;
+  min-height: 90px;
+}
+.dashboard-card {
+  padding: 0.5rem 1rem;
+  min-height: 90px;
+}
+.input-group-text {
+  font-size: 1.3rem;   /* ขนาดใหญ่กว่าปกติ */
+  padding: 0.5rem 0.75rem; /* เว้นพื้นที่ให้พอดี */
+
+}
+form .col-12, form .col-md-6 {
+  margin-bottom: 1px;   /* 👈 ระยะห่างแต่ละช่อง */
+}
+
+/* ลดความสูง input date */
+input[type="date"].form-control-sm {
+  height: 30px;
+  font-size: 13px;
+  padding: 2px 6px;
+}
+
+/* ปรับขนาดไอคอนให้เล็กลงพอดี */
+.input-group-text {
+  padding: 2px 8px;
+  font-size: 14px;
+}
+
+/* ลดความสูงช่อง input floating */
+.form-floating > .form-control,
+.form-floating > .form-select {
+  height: 32px;          /* จากเดิม ~40px */
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+/* เว้นระยะช่องกรอกฟอร์ม */
+form .col-12, form .col-md-6 {
+  margin-bottom: 12px;   /* เดิม 1px → เพิ่มเป็น 12px */
+}
+
+/* ปรับ form-floating ให้สูงขึ้น */
+.form-floating > .form-control,
+.form-floating > .form-select {
+  height: 42px;         /* เดิม 32px → เพิ่มเป็นมาตรฐาน */
+  min-height: 42px;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* ปรับ label ไม่ให้เบียด */
+.form-floating > label {
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+/* ==========================
+   Advanced Filters Section
+========================== */
+.advanced-filters {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+.advanced-filters label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #495057;
+}
+/* === Metric Header (Full-width, Clean & Pro) === */
+:root{
+  --mh-bg: #f8fafc;
+  --mh-border: #e9eef3;
+  --mh-text: #0f172a;
+  --mh-accent: #0d6efd;
+  --mh-muted: #64748b;
+  --mh-chip-bg: #eef2f6;
+  --mh-chip-text: #0f172a;
+  --mh-shadow: 0 1px 2px rgba(16,24,40,0.06);
+}
+
+.metric-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+  padding:.75rem 1rem;
+  border:1px solid var(--mh-border);
+  background:var(--mh-bg);
+  color:var(--mh-text);
+  border-radius:12px;
+  box-shadow:var(--mh-shadow);
+}
+
+.metric-header__left{
+  display:flex;
+  align-items:center;
+  gap:.5rem;
+  flex-wrap:wrap;
+}
+
+.metric-header__icon{
+  font-size:1.1rem;
+  color:var(--mh-accent);
+}
+
+.metric-header__label{
+  font-weight:600;
+  opacity:.9;
+}
+
+.metric-header__value{
+  font-weight:700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing:.2px;
+  margin:0 .125rem;
+}
+
+.metric-header__unit{
+  opacity:.75;
+}
+
+.metric-header__right{
+  display:flex;
+  align-items:center;
+  gap:.5rem;
+  flex-wrap:wrap;
+}
+
+.metric-header__funnel{
+  font-size:1rem;
+  color:var(--mh-muted);
+}
+
+.metric-header__chips{
+  display:flex;
+  align-items:center;
+  gap:.375rem;
+  flex-wrap:wrap;
+}
+
+.chip{
+  display:inline-flex;
+  align-items:center;
+  gap:.35rem;
+  padding:.25rem .5rem;
+  background:var(--mh-chip-bg);
+  color:var(--mh-chip-text);
+  border:1px solid var(--mh-border);
+  border-radius:9999px;
+  font-size:.85rem;
+  line-height:1.2;
+}
+
+.metric-header__no-filter{
+  color:var(--mh-muted);
+  font-size:.9rem;
+}
+
+/* Responsive: ซ้อนบรรทัดอย่างสุภาพบนจอเล็ก */
+@media (max-width: 576px){
+  .metric-header{
+    align-items:flex-start;
+  }
+  .metric-header__left, .metric-header__right{
+    width:100%;
+    justify-content:flex-start;
+  }
+}
+
+/* Dark mode auto */
+@media (prefers-color-scheme: dark){
+  :root{
+    --mh-bg:#0b1220;
+    --mh-border:#1e293b;
+    --mh-text:#e5e7eb;
+    --mh-accent:#93c5fd;
+    --mh-muted:#a3a3a3;
+    --mh-chip-bg:#101826;
+    --mh-chip-text:#e5e7eb;
+    --mh-shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+}
+
+.adv-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  z-index: 1050;
+}
+.adv-overlay.show { display: block; }
+.adv-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.1);
+}
+
+.adv-panel {
+  position: absolute;
+  top: 70px;        /* โผล่ใต้ toolbar */
+  right: 20px;
+  width: 380px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.15);
+}
+
+.offcanvas {
+  width: 280px;   /* ทำ panel ให้เล็กกระทัดรัด */
+}
+
+.offcanvas-body .form-control-sm {
+  height: 28px;
+  font-size: 13px;
+  padding: 2px 6px;
+}
+
+/* ปรับขนาดฟอร์มให้กระทัดรัดและสวยงาม */
+.popup-container {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    width: 80%;
+    max-width: 500px;   /* ขนาดไม่เกิน 500px */
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.popup-container input,
+.popup-container textarea {
+    font-size: 14px;   /* ขนาดตัวอักษรพอดี */
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.popup-container textarea {
+    resize: none; /* ป้องกันไม่ให้ขยายขนาด textarea */
+    height: 100px; /* ขนาดคงที่ */
+}
+
+.popup-container button {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 8px;
+}
+
+/* ปุ่มปิด (close) อยู่ที่มุมขวาบน */
+#closeForm {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #f44336;
+    color: white;
+    border: none;
+    font-size: 20px;
+    padding: 5px 10px;
+    border-radius: 50%;
+    cursor: pointer;
+}
+#closeForm:hover {
+    background: #d32f2f;
+}
+
+/* เพิ่มความกว้างให้ input field และ textarea */
+.popup-container input,
+.popup-container textarea {
+    width: 100%;
+    font-size: 14px;
+}
+
+/* ปุ่ม "เพิ่มรายการตรวจสอบ" ที่ตรงกลาง */
+#showFormButton {
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+
+/* เพิ่มความหนาและสีสดให้หัวข้อ */
+.popup-container h3 {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+
