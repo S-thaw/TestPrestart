@@ -56,9 +56,6 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 MAX_FILE_SIZE = 20 * 1024 * 1024  
 app.secret_key = "supersecretkey"
 
-with app.app_context():
-    init_db()
-
 BASE_DIR    = os.path.join(os.path.expanduser("~"), "Yui_App_DB")
 DB_NAME     = os.path.join(BASE_DIR, "records.db")
 UPLOAD_DIR  = os.path.join(BASE_DIR, "uploads")
