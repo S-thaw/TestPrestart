@@ -40,13 +40,12 @@ class NumberedCanvas(canvas.Canvas):
         super().save()
 
     def draw_page_number(self, page_count):
-        page = self._pageNumber
-        text = f"{page}/{page_count}"
+    page = self._pageNumber
+    try:
         self.setFont("THSarabunNew", 12)
-        self.drawRightString(200*mm, 10*mm, text)
-
-
-
+    except:
+        self.setFont("Helvetica", 10)
+    self.drawRightString(200*mm, 10*mm, f"{page}/{page_count}")
 
 # -------------------- App --------------------
 app = Flask(__name__)
@@ -1704,17 +1703,26 @@ def export_pdf():
     fp = os.path.join(BASE_DIR,"records.pdf")
 
      # ฟอนต์ไทย
-    font_path = os.path.join("static","fonts","THSarabunNew.ttf")
-    pdfmetrics.registerFont(TTFont("THSarabunNew", font_path))
+    # ----- ฟอนต์ไทย ปลอดภัย + fallback -----
+font_path = os.path.join("static", "fonts", "THSarabunNew.ttf")
+BASE_FONT = "Helvetica"
+try:
+    if os.path.exists(font_path):
+        pdfmetrics.registerFont(TTFont("THSarabunNew", font_path))
+        BASE_FONT = "THSarabunNew"
+except Exception:
+    BASE_FONT = "Helvetica"   # กันพัง
 
-    doc = SimpleDocTemplate(fp, pagesize=A4,
-                            rightMargin=30,leftMargin=30,
-                            topMargin=40,bottomMargin=30)
+styles = getSampleStyleSheet()
+styles.add(ParagraphStyle(name='ThaiNormal', fontName=BASE_FONT, fontSize=12, leading=14))
+styles.add(ParagraphStyle(name='ThaiHeader', fontName=BASE_FONT, fontSize=16, alignment=1, spaceAfter=10))
 
-    styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name='ThaiNormal', fontName='THSarabunNew', fontSize=12, leading=14))
-    styles.add(ParagraphStyle(name='ThaiHeader', fontName='THSarabunNew', fontSize=16, alignment=1, spaceAfter=10))
-
+# ----- โลโก้ ปลอดภัย -----
+from reportlab.platypus import Image
+logo_path = os.path.join("static", "logo.png")
+if os.path.exists(logo_path):
+    elements.append(Image(logo_path, width=250, height=60))
+# ถ้าไม่มี ก็ข้ามได้ ไม่ต้องให้ล้ม
     elements = []
 
     # ✅ ดึงชื่อ user ที่ login อยู่
