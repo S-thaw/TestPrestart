@@ -1,5 +1,9 @@
 flask
+gunicorn
+openpyxl
+reportlab
 werkzeug
 pandas
 reportlab
 Flask-Session
+
