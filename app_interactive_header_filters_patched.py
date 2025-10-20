@@ -1842,36 +1842,123 @@ def export_pdf():
 
 @app.route("/restore_db", methods=["GET","POST"])
 @login_required
+# ===== Helper: ตรวจสุขภาพ DB ที่อัปโหลด =====
+def validate_uploaded_db(db_path):
+    """คืน (ok:bool, msg:str) — ok=False พร้อมเหตุผลถ้า DB มีปัญหา และเติม admin ถ้าไม่มี"""
+    try:
+        import sqlite3, os
+        if not os.path.exists(db_path):
+            return False, "ไม่พบไฟล์ที่อัปโหลด"
+
+        with sqlite3.connect(db_path) as conn:
+            cur = conn.cursor()
+            # 1) integrity_check
+            cur.execute("PRAGMA integrity_check;")
+            res = cur.fetchone()
+            if not res or res[0] != "ok":
+                return False, f"integrity_check ไม่ผ่าน: {res[0] if res else 'unknown'}"
+
+            # 2) ตารางต้องมี users/records
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = {r[0] for r in cur.fetchall()}
+            need = {"users","records"}
+            missing = need - tables
+            if missing:
+                return False, f"DB ขาดตาราง: {', '.join(sorted(missing))}"
+
+            # 3) คอลัมน์ที่แอปใช้ต้องมีครบ
+            must_cols = {"id","machine_no","name","date_text","date_iso",
+                         "comments","damage","created_by","created_at_iso","file_path"}
+            cur.execute("PRAGMA table_info(records)")
+            have_cols = {r[1] for r in cur.fetchall()}
+            diff = must_cols - have_cols
+            if diff:
+                return False, f"ตาราง records ขาดคอลัมน์: {', '.join(sorted(diff))}"
+
+            # 4) มี admin อย่างน้อย 1
+            cur.execute("SELECT COUNT(*) FROM users WHERE username='admin'")
+            if cur.fetchone()[0] == 0:
+                from werkzeug.security import generate_password_hash
+                cur.execute(
+                    "INSERT INTO users(username,password_hash,role) VALUES(?,?,?)",
+                    ("admin", generate_password_hash("Admin@123"), "admin")
+                )
+                conn.commit()
+
+        return True, "ok"
+    except Exception as e:
+        return False, f"Exception: {e}"
+
+
+# ===== Route: Restore แบบปลอดภัย =====
+@app.route("/restore_db", methods=["GET","POST"])
+@login_required
 def restore_db():
     if session.get("role") != "admin":
         return "⛔ ไม่มีสิทธิ์", 403
 
     if request.method == "POST":
         file = request.files.get("dbfile")
-        if file and file.filename.endswith(".db"):
-            # 🔹 สำรอง DB เดิมก่อน
-            backup_path = DB_NAME + ".bak"
-            if os.path.exists(DB_NAME):
-                os.replace(DB_NAME, backup_path)
-
-            # 🔹 บันทึกไฟล์ใหม่ทับ DB เดิม
-            save_path = DB_NAME
-            file.save(save_path)
-
-            flash("✅ Restore DB เรียบร้อย (ไฟล์เก่าเก็บเป็น .bak)", "success")
-            return redirect(url_for("index"))
-        else:
+        if not file or not file.filename.endswith(".db"):
             flash("⚠️ กรุณาอัปโหลดไฟล์ .db เท่านั้น", "danger")
             return redirect(url_for("restore_db"))
 
-    return render_template_string(THEME_CSS + """
+        # 1) เซฟเป็นไฟล์ชั่วคราว
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        tmp_path = os.path.join(BASE_DIR, f"_uploaded_{ts}.db")
+        file.save(tmp_path)
 
+        # 2) กันไฟล์ว่าง/ถูกตัด
+        try:
+            if os.path.getsize(tmp_path) < 2048:
+                os.remove(tmp_path)
+                flash("⚠️ ไฟล์ .db เล็กผิดปกติ/อาจเสียหาย", "danger")
+                return redirect(url_for("restore_db"))
+        except Exception:
+            pass
+
+        # 3) ตรวจสุขภาพ + เติม admin ถ้าไม่มี
+        ok, msg = validate_uploaded_db(tmp_path)
+        if not ok:
+            try: os.remove(tmp_path)
+            except Exception: pass
+            flash(f"❌ Restore ล้มเหลว: {msg}", "danger")
+            return redirect(url_for("restore_db"))
+
+        # 4) สำรองไฟล์ปัจจุบัน แล้ว replace แบบอะตอมมิก
+        try:
+            if os.path.exists(DB_NAME):
+                backup_path = DB_NAME + f".bak_{ts}"
+                os.replace(DB_NAME, backup_path)
+
+            os.replace(tmp_path, DB_NAME)
+
+            # 5) ตั้ง permission ให้อ่าน/เขียนได้
+            try: os.chmod(DB_NAME, 0o644)
+            except Exception: pass
+
+            flash("✅ Restore DB เรียบร้อย (สำรองไฟล์เดิมเป็น .bak_เวลาปัจจุบัน)", "success")
+            return redirect(url_for("index"))
+
+        except Exception as e:
+            try:
+                if os.path.exists(tmp_path): os.remove(tmp_path)
+            except Exception:
+                pass
+            flash(f"❌ Restore ผิดพลาดขณะสลับไฟล์: {e}", "danger")
+            return redirect(url_for("restore_db"))
+
+    # GET: ฟอร์มอัปโหลด
+    return render_template_string(THEME_CSS + """
     <div class="container-narrow mt-3">
       <h4>🗂️ Restore Database</h4>
       <form method="post" enctype="multipart/form-data" class="card card-body shadow-sm">
         <label for="dbfile">เลือกไฟล์ .db เพื่อ restore:</label>
         <input type="file" name="dbfile" id="dbfile" accept=".db" class="form-control" required>
-        <button class="btn btn-danger mt-3">♻️ Restore</button>
+        <p class="text-muted small mt-2">
+          ระบบจะตรวจสุขภาพไฟล์และสำรองไฟล์เดิมไว้เป็น <code>.bak_YYYYMMDD_HHMMSS</code>
+        </p>
+        <button class="btn btn-danger mt-3" onclick="return confirm('พิมพ์ OK เพื่อยืนยันการ Restore') && prompt('พิมพ์ OK เพื่อยืนยัน')==='OK'">♻️ Restore</button>
         <a href="{{url_for('index')}}" class="btn btn-secondary mt-2">⬅ กลับหน้าหลัก</a>
       </form>
     </div>
