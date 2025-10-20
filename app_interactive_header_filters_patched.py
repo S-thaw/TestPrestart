@@ -84,6 +84,35 @@ def handle_500(e):
       <a class="btn btn-secondary" href="{{url_for('index')}}">กลับหน้าหลัก</a>
     </div>
     """), 500
+# === SUPER DEBUG (ใช้เฉพาะชั่วคราวเพื่อจับต้นเหตุ) ===
+import traceback, logging
+logging.basicConfig(level=logging.INFO)
+
+@app.errorhandler(Exception)
+def handle_any_exception(e):
+    # Log เต็ม ๆ ไปที่ console / Render logs
+    app.logger.exception("Unhandled exception")
+
+    # ถ้าผู้ใช้เป็น admin ให้โชว์ stack trace บนหน้าเลย (เฉพาะชั่วคราว)
+    if session.get("role") == "admin":
+        tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+        return render_template_string(THEME_CSS + f"""
+        <div class="container-narrow mt-4">
+          <div class="alert alert-danger"><b>เกิดข้อผิดพลาด:</b> {type(e).__name__}: {str(e)}</div>
+          <pre style="white-space: pre-wrap; background:#111; color:#0f0; padding:12px; border-radius:8px; max-height:50vh; overflow:auto;">{tb}</pre>
+          <a class="btn btn-secondary mt-2" href="{{{{url_for('index')}}}}">กลับหน้าหลัก</a>
+        </div>
+        """), 500
+
+    # ถ้าไม่ใช่ admin แสดงข้อความสุภาพ
+    return render_template_string(THEME_CSS + """
+    <div class="container-narrow mt-4">
+      <div class="alert alert-danger">
+        เกิดข้อผิดพลาดภายในระบบ — โปรดติดต่อผู้ดูแลระบบ
+      </div>
+      <a class="btn btn-secondary" href="{{url_for('index')}}">กลับหน้าหลัก</a>
+    </div>
+    """), 500
 
 
 # -------------------- Helpers --------------------
@@ -1860,39 +1889,41 @@ def export_pdf():
 @app.route("/restore_db", methods=["GET","POST"])
 @login_required
 # ===== Helper: ตรวจสุขภาพ DB ที่อัปโหลด =====
+# ===== Helper: ตรวจสุขภาพ DB ที่อัปโหลด =====
 def validate_uploaded_db(db_path):
-    try:
-        import sqlite3, os
-        if not os.path.exists(db_path):
-            return False, "ไม่พบไฟล์อัปโหลด"
-        with sqlite3.connect(db_path) as conn:
-            cur = conn.cursor()
-            cur.execute("PRAGMA integrity_check;")
-            res = cur.fetchone()
-            if not res or res[0] != "ok":
-                return False, f"integrity_check ไม่ผ่าน: {res[0] if res else 'unknown'}"
-            cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = {r[0] for r in cur.fetchall()}
-            need = {"users","records"}
-            miss = need - tables
-            if miss:
-                return False, f"ขาดตาราง: {', '.join(sorted(miss))}"
-            must_cols = {"id","machine_no","name","date_text","date_iso",
-                         "comments","damage","created_by","created_at_iso","file_path"}
-            cur.execute("PRAGMA table_info(records)")
-            have = {r[1] for r in cur.fetchall()}
-            diff = must_cols - have
-            if diff:
-                return False, f"records ขาดคอลัมน์: {', '.join(sorted(diff))}"
-            cur.execute("SELECT COUNT(*) FROM users WHERE username='admin'")
-            if cur.fetchone()[0] == 0:
-                from werkzeug.security import generate_password_hash
-                cur.execute("INSERT INTO users(username,password_hash,role) VALUES(?,?,?)",
-                            ("admin", generate_password_hash("Admin@123"), "admin"))
-                conn.commit()
-        return True, "ok"
-    except Exception as e:
-        return False, f"{type(e).__name__}: {e}"
+    import sqlite3, os
+    if not os.path.exists(db_path):
+        return False, "ไม่พบไฟล์อัปโหลด"
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+        # 1) integrity_check
+        cur.execute("PRAGMA integrity_check;")
+        res = cur.fetchone()
+        if not res or res[0] != "ok":
+            return False, f"integrity_check ไม่ผ่าน: {res[0] if res else 'unknown'}"
+        # 2) ตารางต้องมี users/records
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {r[0] for r in cur.fetchall()}
+        need = {"users","records"}
+        miss = need - tables
+        if miss:
+            return False, f"DB ขาดตาราง: {', '.join(sorted(miss))}"
+        # 3) คอลัมน์ที่แอปใช้ต้องมีครบ
+        must_cols = {"id","machine_no","name","date_text","date_iso",
+                     "comments","damage","created_by","created_at_iso","file_path"}
+        cur.execute("PRAGMA table_info(records)")
+        have = {r[1] for r in cur.fetchall()}
+        diff = must_cols - have
+        if diff:
+            return False, f"records ขาดคอลัมน์: {', '.join(sorted(diff))}"
+        # 4) เติม admin ถ้าไม่มี
+        cur.execute("SELECT COUNT(*) FROM users WHERE username='admin'")
+        if cur.fetchone()[0] == 0:
+            from werkzeug.security import generate_password_hash
+            cur.execute("INSERT INTO users(username,password_hash,role) VALUES(?,?,?)",
+                        ("admin", generate_password_hash("Admin@123"), "admin"))
+            conn.commit()
+    return True, "ok"
 
 @app.route("/restore_db", methods=["GET","POST"])
 @login_required
@@ -1909,11 +1940,17 @@ def restore_db():
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         tmp_path = os.path.join(BASE_DIR, f"_uploaded_{ts}.db")
         file.save(tmp_path)
-        if os.path.getsize(tmp_path) < 2048:
-            os.remove(tmp_path)
-            flash("⚠️ ไฟล์ .db เล็กผิดปกติ/อาจเสียหาย", "danger")
-            return redirect(url_for("restore_db"))
 
+        # ขนาดขั้นต่ำ กันไฟล์ว่าง/ตัดหาย
+        try:
+            if os.path.getsize(tmp_path) < 2048:
+                os.remove(tmp_path)
+                flash("⚠️ ไฟล์ .db เล็กผิดปกติ/อาจเสียหาย", "danger")
+                return redirect(url_for("restore_db"))
+        except Exception:
+            pass
+
+        # ตรวจสุขภาพก่อนสลับ
         ok, msg = validate_uploaded_db(tmp_path)
         if not ok:
             try: os.remove(tmp_path)
@@ -1921,6 +1958,7 @@ def restore_db():
             flash(f"❌ Restore ล้มเหลว: {msg}", "danger")
             return redirect(url_for("restore_db"))
 
+        # สลับแบบอะตอมมิก + ตั้งสิทธิ์
         try:
             if os.path.exists(DB_NAME):
                 backup_path = DB_NAME + f".bak_{ts}"
@@ -1928,7 +1966,7 @@ def restore_db():
             os.replace(tmp_path, DB_NAME)
             try: os.chmod(DB_NAME, 0o644)
             except: pass
-            flash("✅ Restore สำเร็จ (สร้างไฟล์ .bak เก็บของเดิมแล้ว)", "success")
+            flash("✅ Restore สำเร็จ (สำรองไฟล์เดิมเป็น .bak_เวลาแล้ว)", "success")
             return redirect(url_for("index"))
         except Exception as e:
             try:
@@ -1937,18 +1975,22 @@ def restore_db():
             flash(f"❌ ผิดพลาดขณะสลับไฟล์: {e}", "danger")
             return redirect(url_for("restore_db"))
 
+    # ฟอร์มอัปโหลด
     return render_template_string(THEME_CSS + """
     <div class="container-narrow mt-3">
       <h4>🗂️ Restore Database</h4>
       <form method="post" enctype="multipart/form-data" class="card card-body shadow-sm">
         <label for="dbfile">เลือกไฟล์ .db เพื่อ restore:</label>
         <input type="file" name="dbfile" id="dbfile" accept=".db" class="form-control" required>
-        <p class="text-muted small mt-2">ระบบจะตรวจสุขภาพไฟล์และสำรองไฟล์เดิมเป็น <code>.bak_YYYYMMDD_HHMMSS</code></p>
+        <p class="text-muted small mt-2">
+          ระบบจะตรวจสุขภาพไฟล์และสำรองไฟล์เดิมไว้เป็น <code>.bak_YYYYMMDD_HHMMSS</code>
+        </p>
         <button class="btn btn-danger mt-3" onclick="return confirm('พิมพ์ OK เพื่อยืนยัน') && prompt('พิมพ์ OK เพื่อยืนยัน')==='OK'">♻️ Restore</button>
         <a href="{{url_for('index')}}" class="btn btn-secondary mt-2">⬅ กลับหน้าหลัก</a>
       </form>
     </div>
     """)
+
 
 import stat
 def ensure_db_permissions():
@@ -1974,6 +2016,7 @@ def __db_health():
             info["integrity"] = c.fetchone()[0]
             c.execute("SELECT name FROM sqlite_master WHERE type='table'")
             info["tables"] = [r[0] for r in c.fetchall()]
+            # อาจล้มถ้าขาดตาราง => จะเข้า except ด้านล่าง พร้อม error
             c.execute("SELECT COUNT(*) FROM records")
             info["records_count"] = c.fetchone()[0]
             c.execute("SELECT COUNT(*) FROM users WHERE username='admin'")
@@ -1982,6 +2025,7 @@ def __db_health():
     except Exception as e:
         info["error"] = f"{type(e).__name__}: {e}"
         return info, 200
+
 
 
 
