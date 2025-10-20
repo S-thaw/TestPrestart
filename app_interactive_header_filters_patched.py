@@ -1963,6 +1963,15 @@ def restore_db():
       </form>
     </div>
     """)
+import stat
+def ensure_db_permissions():
+    try:
+        if os.path.exists(DB_NAME):
+            os.chmod(DB_NAME, 0o644)
+    except Exception:
+        pass
+
+# เรียกสั้น ๆ ตรงท้าย init_db() หรือหลัง restore เสมอ
 
 
 # -------------------- Run --------------------
