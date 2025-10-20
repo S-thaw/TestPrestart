@@ -1886,8 +1886,8 @@ def export_pdf():
 
     #RESTORE DATABASE
 
-@app.route("/restore_db", methods=["GET","POST"])
-@login_required
+#@app.route("/restore_db", methods=["GET","POST"])
+#@login_required
 # ===== Helper: ตรวจสุขภาพ DB ที่อัปโหลด =====
 def validate_uploaded_db(db_path):
     import sqlite3, os
