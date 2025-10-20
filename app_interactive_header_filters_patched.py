@@ -1555,6 +1555,53 @@ document.getElementById("trendChart").onclick = function(evt) {
 })();
 </script>
 
+<script>
+(function(){
+  // ใช้ username เป็น namespace กันชนกันข้ามผู้ใช้
+  const ns = "{{ session.get('username','')|e }}" || "anon";
+  const k = name => `vc_form_${ns}_${name}`;
+
+  // ระบุช่องที่อยากแคช
+  const fields = ["machine_no","name","date_iso","comments","damage"];
+
+  // เลือกฟอร์ม "เพิ่มรายการตรวจสอบ" (POST + มี multipart)
+  const form = document.querySelector('form[method="POST"][enctype="multipart/form-data"]');
+  if (!form) return;
+
+  // กู้ค่าจาก localStorage
+  fields.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const cached = localStorage.getItem(k(id));
+    if (cached !== null) {
+      if (id === "date_iso" && el._flatpickr) {
+        // ถ้ามี Flatpickr แล้ว → set ผ่าน Flatpickr เพื่อความถูกต้องของ format
+        el._flatpickr.setDate(cached, true, "d/m/Y");
+      } else {
+        el.value = cached;
+      }
+    }
+
+    // เซฟอัตโนมัติเมื่อพิมพ์/เปลี่ยนค่า
+    const save = () => localStorage.setItem(k(id), el.value || "");
+    el.addEventListener("input", save);
+    el.addEventListener("change", save);
+  });
+
+  // ลบแคชเมื่อ submit สำเร็จ (กันค้าง)
+  form.addEventListener("submit", () => {
+    fields.forEach(id => localStorage.removeItem(k(id)));
+  });
+
+  // ลบแคชเมื่อกดปุ่ม Reset
+  form.addEventListener("reset", () => {
+    fields.forEach(id => localStorage.removeItem(k(id)));
+  });
+})();
+</script>
+
+
+
 
 
 
