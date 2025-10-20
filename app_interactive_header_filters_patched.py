@@ -69,6 +69,23 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_EXTS = {"png","jpg","jpeg","gif","pdf","doc","docx","xls","xlsx","csv","txt"}
 
+
+import traceback, logging
+logging.basicConfig(level=logging.INFO)
+
+@app.errorhandler(500)
+def handle_500(e):
+    logging.exception("Internal Server Error")
+    return render_template_string(THEME_CSS + """
+    <div class="container-narrow mt-4">
+      <div class="alert alert-danger">
+        เกิดข้อผิดพลาดภายในระบบ — โปรดดู Logs/Console เพื่อรายละเอียด
+      </div>
+      <a class="btn btn-secondary" href="{{url_for('index')}}">กลับหน้าหลัก</a>
+    </div>
+    """), 500
+
+
 # -------------------- Helpers --------------------
 def parse_iso_to_text(iso: str) -> str:
     return datetime.strptime(iso, "%Y-%m-%d").strftime("%y/%m/%d")
@@ -1844,53 +1861,39 @@ def export_pdf():
 @login_required
 # ===== Helper: ตรวจสุขภาพ DB ที่อัปโหลด =====
 def validate_uploaded_db(db_path):
-    """คืน (ok:bool, msg:str) — ok=False พร้อมเหตุผลถ้า DB มีปัญหา และเติม admin ถ้าไม่มี"""
     try:
         import sqlite3, os
         if not os.path.exists(db_path):
-            return False, "ไม่พบไฟล์ที่อัปโหลด"
-
+            return False, "ไม่พบไฟล์อัปโหลด"
         with sqlite3.connect(db_path) as conn:
             cur = conn.cursor()
-            # 1) integrity_check
             cur.execute("PRAGMA integrity_check;")
             res = cur.fetchone()
             if not res or res[0] != "ok":
                 return False, f"integrity_check ไม่ผ่าน: {res[0] if res else 'unknown'}"
-
-            # 2) ตารางต้องมี users/records
             cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {r[0] for r in cur.fetchall()}
             need = {"users","records"}
-            missing = need - tables
-            if missing:
-                return False, f"DB ขาดตาราง: {', '.join(sorted(missing))}"
-
-            # 3) คอลัมน์ที่แอปใช้ต้องมีครบ
+            miss = need - tables
+            if miss:
+                return False, f"ขาดตาราง: {', '.join(sorted(miss))}"
             must_cols = {"id","machine_no","name","date_text","date_iso",
                          "comments","damage","created_by","created_at_iso","file_path"}
             cur.execute("PRAGMA table_info(records)")
-            have_cols = {r[1] for r in cur.fetchall()}
-            diff = must_cols - have_cols
+            have = {r[1] for r in cur.fetchall()}
+            diff = must_cols - have
             if diff:
-                return False, f"ตาราง records ขาดคอลัมน์: {', '.join(sorted(diff))}"
-
-            # 4) มี admin อย่างน้อย 1
+                return False, f"records ขาดคอลัมน์: {', '.join(sorted(diff))}"
             cur.execute("SELECT COUNT(*) FROM users WHERE username='admin'")
             if cur.fetchone()[0] == 0:
                 from werkzeug.security import generate_password_hash
-                cur.execute(
-                    "INSERT INTO users(username,password_hash,role) VALUES(?,?,?)",
-                    ("admin", generate_password_hash("Admin@123"), "admin")
-                )
+                cur.execute("INSERT INTO users(username,password_hash,role) VALUES(?,?,?)",
+                            ("admin", generate_password_hash("Admin@123"), "admin"))
                 conn.commit()
-
         return True, "ok"
     except Exception as e:
-        return False, f"Exception: {e}"
+        return False, f"{type(e).__name__}: {e}"
 
-
-# ===== Route: Restore แบบปลอดภัย =====
 @app.route("/restore_db", methods=["GET","POST"])
 @login_required
 def restore_db():
@@ -1900,69 +1903,53 @@ def restore_db():
     if request.method == "POST":
         file = request.files.get("dbfile")
         if not file or not file.filename.endswith(".db"):
-            flash("⚠️ กรุณาอัปโหลดไฟล์ .db เท่านั้น", "danger")
+            flash("⚠️ อัปโหลดเฉพาะไฟล์ .db", "danger")
             return redirect(url_for("restore_db"))
 
-        # 1) เซฟเป็นไฟล์ชั่วคราว
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         tmp_path = os.path.join(BASE_DIR, f"_uploaded_{ts}.db")
         file.save(tmp_path)
+        if os.path.getsize(tmp_path) < 2048:
+            os.remove(tmp_path)
+            flash("⚠️ ไฟล์ .db เล็กผิดปกติ/อาจเสียหาย", "danger")
+            return redirect(url_for("restore_db"))
 
-        # 2) กันไฟล์ว่าง/ถูกตัด
-        try:
-            if os.path.getsize(tmp_path) < 2048:
-                os.remove(tmp_path)
-                flash("⚠️ ไฟล์ .db เล็กผิดปกติ/อาจเสียหาย", "danger")
-                return redirect(url_for("restore_db"))
-        except Exception:
-            pass
-
-        # 3) ตรวจสุขภาพ + เติม admin ถ้าไม่มี
         ok, msg = validate_uploaded_db(tmp_path)
         if not ok:
             try: os.remove(tmp_path)
-            except Exception: pass
+            except: pass
             flash(f"❌ Restore ล้มเหลว: {msg}", "danger")
             return redirect(url_for("restore_db"))
 
-        # 4) สำรองไฟล์ปัจจุบัน แล้ว replace แบบอะตอมมิก
         try:
             if os.path.exists(DB_NAME):
                 backup_path = DB_NAME + f".bak_{ts}"
                 os.replace(DB_NAME, backup_path)
-
             os.replace(tmp_path, DB_NAME)
-
-            # 5) ตั้ง permission ให้อ่าน/เขียนได้
             try: os.chmod(DB_NAME, 0o644)
-            except Exception: pass
-
-            flash("✅ Restore DB เรียบร้อย (สำรองไฟล์เดิมเป็น .bak_เวลาปัจจุบัน)", "success")
+            except: pass
+            flash("✅ Restore สำเร็จ (สร้างไฟล์ .bak เก็บของเดิมแล้ว)", "success")
             return redirect(url_for("index"))
-
         except Exception as e:
             try:
                 if os.path.exists(tmp_path): os.remove(tmp_path)
-            except Exception:
-                pass
-            flash(f"❌ Restore ผิดพลาดขณะสลับไฟล์: {e}", "danger")
+            except: pass
+            flash(f"❌ ผิดพลาดขณะสลับไฟล์: {e}", "danger")
             return redirect(url_for("restore_db"))
 
-    # GET: ฟอร์มอัปโหลด
     return render_template_string(THEME_CSS + """
     <div class="container-narrow mt-3">
       <h4>🗂️ Restore Database</h4>
       <form method="post" enctype="multipart/form-data" class="card card-body shadow-sm">
         <label for="dbfile">เลือกไฟล์ .db เพื่อ restore:</label>
         <input type="file" name="dbfile" id="dbfile" accept=".db" class="form-control" required>
-        <p class="text-muted small mt-2">
-          ระบบจะตรวจสุขภาพไฟล์และสำรองไฟล์เดิมไว้เป็น <code>.bak_YYYYMMDD_HHMMSS</code>
-        </p>
-        <button class="btn btn-danger mt-3" onclick="return confirm('พิมพ์ OK เพื่อยืนยันการ Restore') && prompt('พิมพ์ OK เพื่อยืนยัน')==='OK'">♻️ Restore</button>
+        <p class="text-muted small mt-2">ระบบจะตรวจสุขภาพไฟล์และสำรองไฟล์เดิมเป็น <code>.bak_YYYYMMDD_HHMMSS</code></p>
+        <button class="btn btn-danger mt-3" onclick="return confirm('พิมพ์ OK เพื่อยืนยัน') && prompt('พิมพ์ OK เพื่อยืนยัน')==='OK'">♻️ Restore</button>
         <a href="{{url_for('index')}}" class="btn btn-secondary mt-2">⬅ กลับหน้าหลัก</a>
       </form>
     </div>
     """)
+
 import stat
 def ensure_db_permissions():
     try:
@@ -1972,6 +1959,30 @@ def ensure_db_permissions():
         pass
 
 # เรียกสั้น ๆ ตรงท้าย init_db() หรือหลัง restore เสมอ
+
+@app.route("/__db_health")
+@login_required
+def __db_health():
+    import json, sqlite3, os
+    info = {"db_path": DB_NAME, "exists": os.path.exists(DB_NAME)}
+    try:
+        if not info["exists"]:
+            return info, 200
+        with sqlite3.connect(DB_NAME) as conn:
+            c = conn.cursor()
+            c.execute("PRAGMA integrity_check;")
+            info["integrity"] = c.fetchone()[0]
+            c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            info["tables"] = [r[0] for r in c.fetchall()]
+            c.execute("SELECT COUNT(*) FROM records")
+            info["records_count"] = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM users WHERE username='admin'")
+            info["has_admin"] = c.fetchone()[0] > 0
+        return info, 200
+    except Exception as e:
+        info["error"] = f"{type(e).__name__}: {e}"
+        return info, 200
+
 
 
 # -------------------- Run --------------------
