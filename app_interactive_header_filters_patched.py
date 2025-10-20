@@ -75,15 +75,14 @@ logging.basicConfig(level=logging.INFO)
 
 @app.errorhandler(500)
 def handle_500(e):
-    logging.exception("Internal Server Error")
-    return render_template_string(THEME_CSS + """
-    <div class="container-narrow mt-4">
-      <div class="alert alert-danger">
-        เกิดข้อผิดพลาดภายในระบบ — โปรดดู Logs/Console เพื่อรายละเอียด
-      </div>
+    return render_template_string("""
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <div class="container mt-4">
+      <div class="alert alert-danger">เกิดข้อผิดพลาดภายในระบบ — โปรดดู Logs/Console เพื่อรายละเอียด</div>
       <a class="btn btn-secondary" href="{{url_for('index')}}">กลับหน้าหลัก</a>
     </div>
     """), 500
+
 # === SUPER DEBUG (ใช้เฉพาะชั่วคราวเพื่อจับต้นเหตุ) ===
 import traceback, logging
 logging.basicConfig(level=logging.INFO)
@@ -1886,10 +1885,12 @@ def export_pdf():
 
     #RESTORE DATABASE
 
-#@app.route("/restore_db", methods=["GET","POST"])
-#@login_required
-# ===== Helper: ตรวจสุขภาพ DB ที่อัปโหลด =====
-def validate_uploaded_db(db_path):
+# ❌ ลบบรรทัดตกแต่ง route ออก 2 บรรทัดนี้ให้หมด
+# @app.route("/restore_db", methods=["GET","POST"])
+# @login_required
+
+# ✅ เปลี่ยนชื่อ helper กันชน และอย่าใส่ decorator ใด ๆ
+def _validate_uploaded_db_file(db_path):
     import sqlite3, os
     if not os.path.exists(db_path):
         return False, "ไม่พบไฟล์อัปโหลด"
@@ -1924,6 +1925,7 @@ def validate_uploaded_db(db_path):
     return True, "ok"
 
 
+
 @app.route("/restore_db", methods=["GET","POST"])
 @login_required
 def restore_db():
@@ -1950,7 +1952,7 @@ def restore_db():
             pass
 
         # ✅ เรียกตรวจสุขภาพ โดย "ส่ง" tmp_path เข้าไป
-        ok, msg = validate_uploaded_db(tmp_path)
+        ok, msg = _validate_uploaded_db_file(tmp_path)
         if not ok:
             try: os.remove(tmp_path)
             except: pass
